@@ -1,0 +1,108 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: logistics-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: logistics
+    ports:
+      - "${POSTGRES_HOST_PORT:-55432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d logistics"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: logistics-redis
+    ports:
+      - "${REDIS_HOST_PORT:-56379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    container_name: logistics-rabbitmq
+    ports:
+      - "${RABBITMQ_HOST_PORT:-55672}:5672"
+      - "${RABBITMQ_MANAGEMENT_HOST_PORT:-55673}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  aggregator:
+    build:
+      context: .
+      dockerfile: backend/aggregator/Dockerfile
+    container_name: logistics-aggregator
+    env_file:
+      - ./deploy/env/aggregator.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${AGGREGATOR_HOST_PORT:-18081}:8081"
+
+  transport-management:
+    build:
+      context: .
+      dockerfile: backend/transport_management/Dockerfile
+    container_name: logistics-transport-management
+    env_file:
+      - ./deploy/env/transport.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "${TRANSPORT_HOST_PORT:-18083}:8083"
+
+  dispatch-logic:
+    build:
+      context: .
+      dockerfile: backend/dispatch_logic/Dockerfile
+    container_name: logistics-dispatch-logic
+    env_file:
+      - ./deploy/env/dispatch.env
+    depends_on:
+      aggregator:
+        condition: service_started
+      transport-management:
+        condition: service_started
+      redis:
+        condition: service_healthy
+    ports:
+      - "${DISPATCH_HOST_PORT:-18082}:8082"
+
+  api-gateway:
+    build:
+      context: .
+      dockerfile: backend/api/Dockerfile
+    container_name: logistics-api-gateway
+    env_file:
+      - ./deploy/env/api.env
+    depends_on:
+      aggregator:
+        condition: service_started
+      dispatch-logic:
+        condition: service_started
+      transport-management:
+        condition: service_started
+    ports:
+      - "${API_HOST_PORT:-18080}:8080"
+
+volumes:
+  postgres_data:
