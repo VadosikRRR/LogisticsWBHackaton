@@ -38,6 +38,8 @@ Real adapters are connected:
 ├── deploy/
 │   ├── env/
 │   └── postgres/init/
+├── training/
+│   └── solution.ipynb
 ├── docker-compose.yml
 ├── Makefile
 └── .env.example
@@ -134,6 +136,43 @@ If you already initialized an older DB volume (without `target_2h`), apply manua
 ```bash
 make test
 ```
+
+## ML model training
+
+The training and prediction pipeline is available in
+`training/solution.ipynb`. It trains a `CatBoostRegressor` to forecast
+`target_2h` using route, calendar, cyclic time, lag and rolling-window
+features.
+
+Before running the notebook, install the Python dependencies:
+
+```bash
+python -m pip install numpy pandas seaborn matplotlib catboost scikit-learn pyarrow jupyter
+```
+
+Place the competition datasets in the following locations relative to the
+`training` directory:
+
+```text
+training/
+├── data/
+│   ├── train_team_track.parquet
+│   └── test_team_track.parquet
+└── solution.ipynb
+```
+
+Start Jupyter from `training` so that the relative paths in the notebook are
+resolved correctly:
+
+```bash
+cd training
+jupyter notebook solution.ipynb
+```
+
+Run the cells in order. The training cell writes `catboost_model.cbm`; the
+final cell loads this model, predicts the test set sequentially (using prior
+predictions as history), and writes `submission.csv`. Both files are created
+in `training/`.
 
 ## Training dataset importer
 
